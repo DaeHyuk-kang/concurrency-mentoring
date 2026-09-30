@@ -1,0 +1,443 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<title>좌석 잠금 데모</title>
+<style>
+  :root {
+    --indigo: #4F46E5;
+    --slate900: #0F172A;
+    --slate500: #64748B;
+    --slate50: #F8FAFC;
+    --border: #E2E8F0;
+    --green: #059669;
+    --amber: #D97706;
+    --red: #DC2626;
+  }
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    font-family: -apple-system, "Noto Sans KR", sans-serif;
+    color: var(--slate900);
+    padding: 32px;
+    min-height: 100vh;
+    background: linear-gradient(180deg, #7DD3FC 0%, #BAE6FD 38%, #EFF9FF 75%, #F8FAFC 100%);
+    position: relative;
+    overflow-x: hidden;
+  }
+
+  /* ---------- 하늘 + 구름 ---------- */
+  .sky { position: fixed; inset: 0; overflow: hidden; z-index: 0; pointer-events: none; }
+  .cloud {
+    position: absolute;
+    background: #fff;
+    border-radius: 50px;
+    opacity: 0.9;
+    filter: blur(0.3px);
+    animation: drift linear infinite;
+  }
+  .cloud::before, .cloud::after {
+    content: ''; position: absolute; background: #fff; border-radius: 50%;
+  }
+  .cloud.c1 { width: 90px; height: 28px; top: 8%; animation-duration: 55s; }
+  .cloud.c1::before { width: 46px; height: 46px; top: -22px; left: 10px; }
+  .cloud.c1::after  { width: 34px; height: 34px; top: -14px; left: 46px; }
+  .cloud.c2 { width: 60px; height: 20px; top: 20%; animation-duration: 40s; animation-delay: -12s; }
+  .cloud.c2::before { width: 30px; height: 30px; top: -14px; left: 6px; }
+  .cloud.c2::after  { width: 24px; height: 24px; top: -10px; left: 30px; }
+  .cloud.c3 { width: 110px; height: 32px; top: 3%; animation-duration: 70s; animation-delay: -30s; }
+  .cloud.c3::before { width: 52px; height: 52px; top: -26px; left: 14px; }
+  .cloud.c3::after  { width: 40px; height: 40px; top: -16px; left: 58px; }
+  .cloud.c4 { width: 70px; height: 22px; top: 30%; animation-duration: 48s; animation-delay: -5s; }
+  .cloud.c4::before { width: 34px; height: 34px; top: -16px; left: 8px; }
+  .cloud.c4::after  { width: 26px; height: 26px; top: -10px; left: 36px; }
+  @keyframes drift { from { transform: translateX(-140px); } to { transform: translateX(110vw); } }
+
+  .wrap { position: relative; z-index: 1; max-width: 760px; margin: 0 auto; }
+
+  h1 { font-size: 22px; margin: 0 0 4px; text-align: center; }
+  .sub { color: #334155; margin: 0 0 24px; font-size: 14px; text-align: center; }
+
+  .panel {
+    background: rgba(255,255,255,0.92);
+    backdrop-filter: blur(4px);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 20px;
+  }
+
+  .mode-toggle { display: flex; gap: 8px; margin-bottom: 16px; }
+  .mode-btn {
+    flex: 1;
+    padding: 14px;
+    border-radius: 10px;
+    border: 2px solid var(--border);
+    background: white;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 600;
+    text-align: left;
+  }
+  .mode-btn small { display: block; font-weight: 400; color: var(--slate500); margin-top: 4px; }
+  .mode-btn.active.buggy { border-color: var(--red); background: #FEF2F2; }
+  .mode-btn.active.optimistic { border-color: var(--amber); background: #FFFBEB; }
+  .mode-btn.active.fixed { border-color: var(--green); background: #ECFDF5; }
+
+  .controls { display: flex; gap: 8px; align-items: center; margin-bottom: 4px; flex-wrap: wrap; }
+  .controls input {
+    padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 14px; width: 140px;
+  }
+  button.action {
+    padding: 10px 16px; border-radius: 8px; border: none; background: var(--indigo);
+    color: white; font-weight: 600; cursor: pointer; font-size: 14px;
+  }
+  button.action.secondary { background: var(--slate500); }
+  button.action.race { background: var(--amber); }
+
+  /* ---------- 기체(캐빈) ---------- */
+  .cabin {
+    background: linear-gradient(180deg, #FDFEFE, #F1F5F9);
+    border: 3px solid #CBD5E1;
+    border-radius: 46px 46px 22px 22px;
+    padding: 22px 26px 26px;
+    margin-top: 8px;
+    position: relative;
+  }
+  .cabin::before {
+    /* 기체 코 부분 강조 라인 */
+    content: '✈'; position: absolute; top: -18px; left: 50%; transform: translateX(-50%) rotate(90deg);
+    font-size: 22px; color: var(--slate500); background: #F8FAFC; padding: 0 8px;
+  }
+  .windows { display: flex; justify-content: space-around; margin-bottom: 18px; padding: 0 6px; }
+  .window {
+    width: 38px; height: 24px; border-radius: 50% / 60%;
+    border: 3px solid #94A3B8;
+    background: linear-gradient(180deg, #7DD3FC 0%, #E0F2FE 70%);
+    position: relative; overflow: hidden;
+  }
+  .window .mini-cloud { position: absolute; width: 16px; height: 6px; background: #fff; border-radius: 50%; opacity: .9; }
+  .window .mini-cloud.a { top: 12px; left: 4px; }
+  .window .mini-cloud.b { top: 6px; left: 14px; width: 10px; height: 5px; }
+
+  .plane-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 26px 1fr 1fr;
+    gap: 10px 8px;
+  }
+  .aisle-gap {
+    border-left: 2px dashed #CBD5E1;
+    margin: 0 auto;
+  }
+
+  .seat {
+    border: 2px solid var(--border);
+    border-radius: 12px;
+    padding: 10px 6px 8px;
+    text-align: center;
+    cursor: pointer;
+    background: #F8FAFC;
+    user-select: none;
+    transition: transform 0.1s ease;
+  }
+  .seat:hover { transform: translateY(-2px); }
+  .seat .icon { font-size: 28px; line-height: 1; }
+  .seat .num { font-size: 13px; font-weight: 700; margin-top: 2px; }
+  .seat .status { font-size: 10.5px; margin-top: 3px; color: var(--slate500); line-height: 1.3; }
+  .seat.AVAILABLE { border-color: var(--green); background: #ECFDF5; }
+  .seat.AVAILABLE .icon { filter: grayscale(0) hue-rotate(90deg); }
+  .seat.PROCESSING { border-color: var(--amber); background: #FFFBEB; animation: pulse 0.6s infinite alternate; }
+  .seat.OCCUPIED { border-color: var(--red); background: #FEF2F2; cursor: not-allowed; }
+  .seat.OCCUPIED .icon { filter: grayscale(0.4); }
+  @keyframes pulse { from { opacity: 1; } to { opacity: 0.55; } }
+
+  .chips { margin-top: 6px; display: flex; flex-direction: column; gap: 3px; }
+  .chip {
+    font-size: 9.5px; font-weight: 600; border-radius: 5px; padding: 2px 5px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .chip.processing { background: #FEF3C7; color: #92400E; }
+  .chip.waiting { background: #E0E7FF; color: #3730A3; }
+
+  .log-panel { max-height: 260px; overflow-y: auto; font-family: "SF Mono", monospace; font-size: 12.5px; }
+  .log-line { padding: 3px 0; border-bottom: 1px dashed #eee; color: var(--slate900); }
+  .log-line.success { color: var(--green); }
+  .log-line.fail { color: var(--red); }
+
+  /* ---------- 이름 입력 화면 (비관적 락 전용) ---------- */
+  .modal-backdrop {
+    position: fixed; inset: 0; background: rgba(15,23,42,0.55);
+    display: flex; align-items: center; justify-content: center; z-index: 50;
+  }
+  .modal-backdrop[hidden] { display: none; }
+  .modal-card {
+    background: white; border-radius: 16px; padding: 28px 26px; width: 320px;
+    box-shadow: 0 20px 50px rgba(0,0,0,0.3); text-align: center;
+  }
+  .modal-card .modal-seat { font-size: 32px; margin-bottom: 6px; }
+  .modal-card h2 { font-size: 17px; margin: 0 0 6px; }
+  .modal-card p { font-size: 13px; color: var(--slate500); margin: 0 0 16px; line-height: 1.5; }
+  .modal-card input {
+    width: 100%; padding: 12px 14px; border: 2px solid var(--indigo); border-radius: 10px;
+    font-size: 15px; text-align: center; margin-bottom: 14px;
+  }
+  .modal-card .modal-lock-note {
+    font-size: 11.5px; color: var(--amber); background: #FFFBEB; border-radius: 8px;
+    padding: 6px 10px; margin-bottom: 14px;
+  }
+  .modal-actions { display: flex; gap: 8px; }
+  .modal-actions button {
+    flex: 1; padding: 10px; border-radius: 8px; border: none; font-weight: 600; cursor: pointer; font-size: 13.5px;
+  }
+  .modal-actions .confirm { background: var(--green); color: white; }
+  .modal-actions .cancel { background: #F1F5F9; color: var(--slate500); }
+</style>
+</head>
+<body>
+  <div class="sky">
+    <div class="cloud c1"></div>
+    <div class="cloud c2"></div>
+    <div class="cloud c3"></div>
+    <div class="cloud c4"></div>
+  </div>
+
+  <div class="wrap">
+    <h1>✈ 좌석 잠금 데모</h1>
+    <p class="sub">버그 버전 · 낙관적 락 · 비관적 락 — 같은 좌석을 동시에 예약하면 무슨 일이 벌어지는지 비교합니다.</p>
+
+    <div class="panel">
+      <div class="mode-toggle">
+        <button class="mode-btn buggy" data-mode="buggy" onclick="setMode('buggy')">
+          버그 버전
+          <small>확인 후 지연 · 잠금 없음 → 둘 다 성공할 수 있음</small>
+        </button>
+        <button class="mode-btn optimistic" data-mode="optimistic" onclick="setMode('optimistic')">
+          낙관적 락
+          <small>일단 진행, 저장할 때 버전 비교 → 늦은 쪽은 처리 다 끝나고 충돌</small>
+        </button>
+        <button class="mode-btn fixed" data-mode="fixed" onclick="setMode('fixed')">
+          비관적 락
+          <small>클릭하면 먼저 잠금 → 이름 입력 화면. 입력하는 동안 다른 사람은 접근 불가</small>
+        </button>
+      </div>
+
+      <div class="controls">
+        <input id="userName" placeholder="내 이름" value="손님A" />
+        <button class="action secondary" onclick="reset()">전체 초기화</button>
+        <button class="action race" onclick="simulateRace()">⚡ 2명 동시 클릭 (1A)</button>
+        <button class="action race" onclick="simulateQueue()">⚡⚡ 3명 동시 클릭 (1A, 대기열 확인)</button>
+      </div>
+
+      <div class="cabin">
+        <div class="windows">
+          <div class="window"><div class="mini-cloud a"></div><div class="mini-cloud b"></div></div>
+          <div class="window"><div class="mini-cloud a"></div></div>
+          <div class="window"><div class="mini-cloud b"></div></div>
+          <div class="window"><div class="mini-cloud a"></div><div class="mini-cloud b"></div></div>
+        </div>
+        <div class="plane-grid" id="grid"></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <strong>활동 로그</strong>
+      <div class="log-panel" id="log"></div>
+    </div>
+  </div>
+
+  <div class="modal-backdrop" id="lockModal" hidden>
+    <div class="modal-card">
+      <div class="modal-seat">💺</div>
+      <h2 id="lockModalTitle">좌석 예약</h2>
+      <p>이름을 입력하고 <strong>Enter</strong>를 누르면 예약이 확정됩니다.</p>
+      <div class="modal-lock-note">🔒 입력하는 동안 이 좌석은 다른 사람이 접근할 수 없습니다</div>
+      <input id="lockNameInput" placeholder="이름을 입력하세요" autocomplete="off" />
+      <div class="modal-actions">
+        <button class="cancel" onclick="cancelLockModal()">취소</button>
+        <button class="confirm" onclick="confirmLockModal()">확정</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+let mode = 'buggy';
+const SEAT_LABELS = { 1: '1A', 2: '1B', 3: '1C', 4: '1D', 5: '2A', 6: '2B', 7: '2C', 8: '2D' };
+
+function setMode(m) {
+  mode = m;
+  document.querySelectorAll('.mode-btn').forEach(b => b.classList.toggle('active', b.dataset.mode === m));
+}
+setMode('buggy');
+
+async function fetchSeats() {
+  const res = await fetch('/api/seats');
+  const seats = await res.json();
+  const grid = document.getElementById('grid');
+  grid.innerHTML = '';
+
+  const attemptsRes = await fetch('/api/attempts');
+  const attempts = await attemptsRes.json();
+
+  seats.forEach((seat, idx) => {
+    const div = document.createElement('div');
+    div.className = 'seat ' + seat.status;
+    div.onclick = () => onSeatClick(seat.id);
+    const icon = seat.status === 'OCCUPIED' ? '🔴' : (seat.status === 'PROCESSING' ? '🟡' : '💺');
+
+    const mine = attempts.filter(a => a.seatId === seat.id);
+    const chips = mine.map(a => {
+      const cls = a.state === 'WAITING' ? 'chip waiting' : 'chip processing';
+      const label = a.state === 'WAITING' ? '⏳ 대기중' : '🟡 처리중';
+      return `<div class="${cls}">${label}: ${a.user}</div>`;
+    }).join('');
+
+    div.innerHTML = `<div class="icon">${icon}</div>` +
+      `<div class="num">${SEAT_LABELS[seat.id] || seat.id}</div>` +
+      `<div class="status">${seat.status} · v${seat.version}${seat.occupiedBy ? '<br>' + seat.occupiedBy : ''}</div>` +
+      (chips ? `<div class="chips">${chips}</div>` : '');
+    grid.appendChild(div);
+    // 2번째 좌석 뒤(1B, 2B)에 통로 표시
+    if (idx === 1 || idx === 5) {
+      const aisle = document.createElement('div');
+      aisle.className = 'aisle-gap';
+      grid.appendChild(aisle);
+    }
+  });
+}
+
+async function fetchLog() {
+  const res = await fetch('/api/log');
+  const lines = await res.json();
+  const logDiv = document.getElementById('log');
+  logDiv.innerHTML = lines.slice().reverse().map(l => {
+    const cls = l.includes('성공') ? 'success' : (l.includes('실패') || l.includes('거절') || l.includes('충돌') ? 'fail' : '');
+    return `<div class="log-line ${cls}">${l}</div>`;
+  }).join('');
+}
+
+async function reserve(seatId, userOverride) {
+  const user = userOverride || document.getElementById('userName').value || '손님';
+  await fetch('/api/reserve', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ seatId, user, mode })
+  });
+  await refresh();
+}
+
+// 비관적 락 모드에서 사람이 클릭했을 때: 낙관적 락/버그 버전은 그대로 바로 시도하고,
+// 비관적 락은 "먼저 잠그고 → 이름 입력 화면으로 이동" 흐름을 탄다.
+// 소유권은 토큰으로 증명한다 — 입력창에서 이름을 고쳐 써도 확정이 실패하지 않도록.
+let lockingSeatId = null;
+let lockingToken = null;
+
+async function onSeatClick(seatId) {
+  if (mode !== 'fixed') {
+    return reserve(seatId);
+  }
+  const user = document.getElementById('userName').value || '손님';
+  const res = await fetch('/api/lock', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ seatId, user })
+  });
+  const result = await res.json();
+  await refresh();
+  if (!result.success) {
+    alert('❌ ' + result.message);
+    return;
+  }
+  openLockModal(seatId, user, result.token);
+}
+
+function openLockModal(seatId, user, token) {
+  lockingSeatId = seatId;
+  lockingToken = token;
+  document.getElementById('lockModalTitle').textContent = SEAT_LABELS[seatId] + '번 좌석 예약';
+  const input = document.getElementById('lockNameInput');
+  input.value = user;
+  document.getElementById('lockModal').hidden = false;
+  input.focus();
+  input.select();
+}
+
+function closeLockModal() {
+  document.getElementById('lockModal').hidden = true;
+  lockingSeatId = null;
+  lockingToken = null;
+}
+
+async function confirmLockModal() {
+  if (lockingSeatId == null) return;
+  const user = document.getElementById('lockNameInput').value || '손님';
+  const seatId = lockingSeatId;
+  const token = lockingToken;
+  closeLockModal();
+  const res = await fetch('/api/confirm', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ seatId, user, token })
+  });
+  const result = await res.json();
+  await refresh();
+  if (!result.success) alert('❌ ' + result.message);
+}
+
+async function cancelLockModal() {
+  if (lockingSeatId == null) return;
+  const user = document.getElementById('lockNameInput').value || '손님';
+  const seatId = lockingSeatId;
+  const token = lockingToken;
+  closeLockModal();
+  await fetch('/api/cancel', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ seatId, user, token })
+  });
+  await refresh();
+}
+
+async function simulateRace() {
+  // 진짜 동시 요청: 두 사용자가 정확히 같은 순간에 좌석 1(1A)을 누른 것처럼 흉내낸다.
+  await Promise.all([
+    fetch('/api/reserve', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ seatId: 1, user: '동시클릭-A', mode })
+    }),
+    fetch('/api/reserve', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ seatId: 1, user: '동시클릭-B', mode })
+    })
+  ]);
+  await refresh();
+}
+
+async function simulateQueue() {
+  // 세 명이 동시에 몰리는 상황. 비관적 락에서는 대기열(WAITING)이 쌓이는 게 눈에 보인다.
+  await Promise.all(['A', 'B', 'C'].map(who =>
+    fetch('/api/reserve', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ seatId: 1, user: '동시클릭-' + who, mode })
+    })
+  ));
+  await refresh();
+}
+
+async function reset() {
+  await fetch('/api/reset', { method: 'POST' });
+  await refresh();
+}
+
+async function refresh() {
+  await fetchSeats();
+  await fetchLog();
+}
+
+document.getElementById('lockNameInput').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') confirmLockModal();
+});
+
+refresh();
+setInterval(refresh, 300);
+</script>
+</body>
+</html>
